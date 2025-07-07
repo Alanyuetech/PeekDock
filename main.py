@@ -6,7 +6,7 @@ if sys.platform != 'win32':
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import win32gui
-import win32con
+
 
 
 def enum_windows():
@@ -35,6 +35,28 @@ class WindowListWidget(QtWidgets.QListWidget):
             self.addItem(item)
 
 
+class ThumbnailWidget(QtWidgets.QLabel):
+    """Widget displaying a periodically updated screenshot of a window."""
+
+    def __init__(self, hwnd, parent=None):
+        super().__init__(parent)
+        self.hwnd = hwnd
+        self.setScaledContents(True)
+        self.setFixedSize(200, 150)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.update_thumbnail)
+        self.timer.start(500)
+        self.update_thumbnail()
+
+    def update_thumbnail(self):
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen:
+            pix = screen.grabWindow(self.hwnd)
+            self.setPixmap(pix.scaled(self.size(), QtCore.Qt.KeepAspectRatio,
+                                      QtCore.Qt.SmoothTransformation))
+
+
+
 class DockArea(QtWidgets.QMdiArea):
     """Area that accepts window handles to dock."""
 
@@ -59,18 +81,15 @@ class DockArea(QtWidgets.QMdiArea):
         if hwnd in self.docked:
             return
         title = win32gui.GetWindowText(hwnd)
-        window = QtGui.QWindow.fromWinId(hwnd)
-        container = QtWidgets.QWidget.createWindowContainer(window)
-        sub = self.addSubWindow(container)
+        thumb = ThumbnailWidget(hwnd)
+        sub = self.addSubWindow(thumb)
         sub.setWindowTitle(title)
+        sub.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         sub.resize(200, 150)
         sub.show()
-        self.docked[hwnd] = (window, container, sub)
-        # set parent at OS level
-        win32gui.SetParent(hwnd, int(container.winId()))
-        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-        style = style & ~win32con.WS_POPUP | win32con.WS_CHILD
-        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+        self.docked[hwnd] = sub
+        sub.destroyed.connect(lambda: self.docked.pop(hwnd, None))
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
