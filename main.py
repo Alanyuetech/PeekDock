@@ -8,6 +8,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 import win32gui
 
 
+
 def enum_windows():
     """Return list of (title, handle) tuples for visible windows."""
     results = []
@@ -55,6 +56,7 @@ class ThumbnailWidget(QtWidgets.QLabel):
                                       QtCore.Qt.SmoothTransformation))
 
 
+
 class DockArea(QtWidgets.QMdiArea):
     """Area that accepts window handles to dock."""
 
@@ -87,6 +89,7 @@ class DockArea(QtWidgets.QMdiArea):
         sub.show()
         self.docked[hwnd] = sub
         sub.destroyed.connect(lambda: self.docked.pop(hwnd, None))
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
