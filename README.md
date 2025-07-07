@@ -9,8 +9,9 @@ PeekDock is a small Python/Qt application that provides a translucent dock windo
 - Semi-transparent, resizable main window
 - List of all visible windows on the system
 - Drag an entry from the list into the dock area to create a preview
-- Each docked window shows a continuously updated, scaled screenshot
-- When docked, the original window is minimized but the thumbnail keeps updating even while minimized
+- Each docked window shows a continuously updated, scaled thumbnail
+- Windows remain in the taskbar while the preview uses the Windows DWM API
+- Thumbnails keep updating even if the source window is minimized
 
 
 ### Requirements

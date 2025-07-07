@@ -6,39 +6,47 @@ if sys.platform != 'win32':
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import win32gui
-import win32ui
 import win32con
+import ctypes
+from ctypes import wintypes
 
+# DWM API constants and setup
+DWM_TNP_RECTDESTINATION = 0x00000001
+DWM_TNP_VISIBLE = 0x00000008
+DWM_TNP_OPACITY = 0x00000004
+DWM_TNP_SOURCECLIENTAREAONLY = 0x00000010
 
-def capture_window(hwnd):
-    """Return QPixmap of a window using PrintWindow, even if minimized."""
-    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-    width, height = right - left, bottom - top
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", wintypes.LONG),
+        ("top", wintypes.LONG),
+        ("right", wintypes.LONG),
+        ("bottom", wintypes.LONG),
+    ]
 
-    hwnd_dc = win32gui.GetWindowDC(hwnd)
-    mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-    save_dc = mfc_dc.CreateCompatibleDC()
-    bitmap = win32ui.CreateBitmap()
-    bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-    save_dc.SelectObject(bitmap)
+class DWM_THUMBNAIL_PROPERTIES(ctypes.Structure):
+    _fields_ = [
+        ("dwFlags", wintypes.DWORD),
+        ("rcDestination", RECT),
+        ("rcSource", RECT),
+        ("opacity", wintypes.BYTE),
+        ("fVisible", wintypes.BOOL),
+        ("fSourceClientAreaOnly", wintypes.BOOL),
+    ]
 
-    result = win32gui.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
-
-    bmpinfo = bitmap.GetInfo()
-    bmpstr = bitmap.GetBitmapBits(True)
-
-    win32gui.DeleteObject(bitmap.GetHandle())
-    save_dc.DeleteDC()
-    mfc_dc.DeleteDC()
-    win32gui.ReleaseDC(hwnd, hwnd_dc)
-
-    if result != 1:
-        return None
-
-    image = QtGui.QImage(bmpstr, bmpinfo['bmWidth'], bmpinfo['bmHeight'],
-                         bmpinfo['bmWidthBytes'], QtGui.QImage.Format_RGB32)
-    return QtGui.QPixmap.fromImage(image.rgbSwapped())
-
+dwmapi = ctypes.windll.dwmapi
+DwmRegisterThumbnail = dwmapi.DwmRegisterThumbnail
+DwmRegisterThumbnail.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.POINTER(wintypes.HANDLE)]
+DwmRegisterThumbnail.restype = wintypes.HRESULT
+DwmUnregisterThumbnail = dwmapi.DwmUnregisterThumbnail
+DwmUnregisterThumbnail.argtypes = [wintypes.HANDLE]
+DwmUnregisterThumbnail.restype = wintypes.HRESULT
+DwmUpdateThumbnailProperties = dwmapi.DwmUpdateThumbnailProperties
+DwmUpdateThumbnailProperties.argtypes = [wintypes.HANDLE, ctypes.POINTER(DWM_THUMBNAIL_PROPERTIES)]
+DwmUpdateThumbnailProperties.restype = wintypes.HRESULT
+DwmQueryThumbnailSourceSize = dwmapi.DwmQueryThumbnailSourceSize
+DwmQueryThumbnailSourceSize.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.SIZE)]
+DwmQueryThumbnailSourceSize.restype = wintypes.HRESULT
 
 
 def enum_windows():
@@ -59,6 +67,11 @@ def enum_windows():
 class WindowListWidget(QtWidgets.QListWidget):
     """List widget showing open windows."""
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+
+
     def refresh(self):
         self.clear()
         for title, hwnd in enum_windows():
@@ -66,26 +79,60 @@ class WindowListWidget(QtWidgets.QListWidget):
             item.setData(QtCore.Qt.UserRole, hwnd)
             self.addItem(item)
 
+    def startDrag(self, supportedActions):
+        item = self.currentItem()
+        if not item:
+            return
+        hwnd = item.data(QtCore.Qt.UserRole)
+        mime = QtCore.QMimeData()
+        mime.setData('application/x-peekdock-hwnd', str(hwnd).encode())
+        drag = QtGui.QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec_(QtCore.Qt.CopyAction)
 
-class ThumbnailWidget(QtWidgets.QLabel):
-    """Widget displaying a periodically updated screenshot of a window."""
+
+class ThumbnailWidget(QtWidgets.QWidget):
+    """Widget that shows a live DWM thumbnail of a window."""
+
 
     def __init__(self, hwnd, parent=None):
         super().__init__(parent)
         self.hwnd = hwnd
-        self.setScaledContents(True)
+        self.thumbnail = wintypes.HANDLE()
         self.setFixedSize(200, 150)
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update_thumbnail)
-        self.timer.start(500)
-        self.update_thumbnail()
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        res = DwmRegisterThumbnail(int(self.winId()), hwnd, ctypes.byref(self.thumbnail))
+        if res != 0:
+            print('Failed to register thumbnail', res)
+        self.update_properties()
 
-    def update_thumbnail(self):
-        pix = capture_window(self.hwnd)
-        if pix:
-            pix = pix.scaled(self.size(), QtCore.Qt.KeepAspectRatio,
-                             QtCore.Qt.SmoothTransformation)
-            self.setPixmap(pix)
+    def update_properties(self):
+        if not self.thumbnail:
+            return
+        dest = RECT(0, 0, self.width(), self.height())
+        source_size = wintypes.SIZE()
+        if DwmQueryThumbnailSourceSize(self.thumbnail, ctypes.byref(source_size)) == 0:
+            src = RECT(0, 0, source_size.cx, source_size.cy)
+        else:
+            src = RECT()
+        props = DWM_THUMBNAIL_PROPERTIES()
+        props.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE
+        props.rcDestination = dest
+        props.rcSource = src
+        props.opacity = 255
+        props.fVisible = True
+        props.fSourceClientAreaOnly = False
+        DwmUpdateThumbnailProperties(self.thumbnail, ctypes.byref(props))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_properties()
+
+    def closeEvent(self, event):
+        if self.thumbnail:
+            DwmUnregisterThumbnail(self.thumbnail)
+            self.thumbnail = wintypes.HANDLE()
+        super().closeEvent(event)
 
 
 
@@ -143,15 +190,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_area = DockArea()
         self.setCentralWidget(self.dock_area)
 
-        self.list_widget.itemPressed.connect(self.start_drag)
-
-    def start_drag(self, item):
-        hwnd = item.data(QtCore.Qt.UserRole)
-        mime = QtCore.QMimeData()
-        mime.setData('application/x-peekdock-hwnd', str(hwnd).encode())
-        drag = QtGui.QDrag(self.list_widget)
-        drag.setMimeData(mime)
-        drag.exec_(QtCore.Qt.MoveAction)
 
 
 def main():
