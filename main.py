@@ -6,6 +6,38 @@ if sys.platform != 'win32':
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import win32gui
+import win32ui
+import win32con
+
+
+def capture_window(hwnd):
+    """Return QPixmap of a window using PrintWindow, even if minimized."""
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    width, height = right - left, bottom - top
+
+    hwnd_dc = win32gui.GetWindowDC(hwnd)
+    mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+    save_dc = mfc_dc.CreateCompatibleDC()
+    bitmap = win32ui.CreateBitmap()
+    bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
+    save_dc.SelectObject(bitmap)
+
+    result = win32gui.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+
+    bmpinfo = bitmap.GetInfo()
+    bmpstr = bitmap.GetBitmapBits(True)
+
+    win32gui.DeleteObject(bitmap.GetHandle())
+    save_dc.DeleteDC()
+    mfc_dc.DeleteDC()
+    win32gui.ReleaseDC(hwnd, hwnd_dc)
+
+    if result != 1:
+        return None
+
+    image = QtGui.QImage(bmpstr, bmpinfo['bmWidth'], bmpinfo['bmHeight'],
+                         bmpinfo['bmWidthBytes'], QtGui.QImage.Format_RGB32)
+    return QtGui.QPixmap.fromImage(image.rgbSwapped())
 
 
 
@@ -49,11 +81,11 @@ class ThumbnailWidget(QtWidgets.QLabel):
         self.update_thumbnail()
 
     def update_thumbnail(self):
-        screen = QtWidgets.QApplication.primaryScreen()
-        if screen:
-            pix = screen.grabWindow(self.hwnd)
-            self.setPixmap(pix.scaled(self.size(), QtCore.Qt.KeepAspectRatio,
-                                      QtCore.Qt.SmoothTransformation))
+        pix = capture_window(self.hwnd)
+        if pix:
+            pix = pix.scaled(self.size(), QtCore.Qt.KeepAspectRatio,
+                             QtCore.Qt.SmoothTransformation)
+            self.setPixmap(pix)
 
 
 
@@ -89,6 +121,8 @@ class DockArea(QtWidgets.QMdiArea):
         sub.show()
         self.docked[hwnd] = sub
         sub.destroyed.connect(lambda: self.docked.pop(hwnd, None))
+        # Minimize original window to free desktop space
+        win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
 
 
 
