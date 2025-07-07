@@ -40,6 +40,7 @@ def capture_window(hwnd):
     return QtGui.QPixmap.fromImage(image.rgbSwapped())
 
 
+
 def enum_windows():
     """Return list of (title, handle) tuples for visible windows."""
     results = []
@@ -87,6 +88,7 @@ class ThumbnailWidget(QtWidgets.QLabel):
             self.setPixmap(pix)
 
 
+
 class DockArea(QtWidgets.QMdiArea):
     """Area that accepts window handles to dock."""
 
@@ -121,6 +123,7 @@ class DockArea(QtWidgets.QMdiArea):
         sub.destroyed.connect(lambda: self.docked.pop(hwnd, None))
         # Minimize original window to free desktop space
         win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
