@@ -106,6 +106,9 @@ class ThumbnailWidget(QtWidgets.QWidget):
         self.thumbnail = wintypes.HANDLE()
         self.setFixedSize(200, 150)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        # Ensure a native window for DWM to draw into
+        self.setAttribute(QtCore.Qt.WA_PaintOnScreen, True)
+        self.setAttribute(QtCore.Qt.WA_NativeWindow, True)
         res = DwmRegisterThumbnail(int(self.winId()), hwnd, ctypes.byref(self.thumbnail))
         if res != 0:
             print('Failed to register thumbnail', res)
@@ -131,6 +134,11 @@ class ThumbnailWidget(QtWidgets.QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.update_properties()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Refresh thumbnail location after the widget is visible
         self.update_properties()
 
     def closeEvent(self, event):
