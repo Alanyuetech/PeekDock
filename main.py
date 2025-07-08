@@ -14,6 +14,7 @@ from ctypes import wintypes
 if not hasattr(wintypes, 'HRESULT'):
     wintypes.HRESULT = ctypes.c_long
 
+
 # DWM API constants and setup
 DWM_TNP_RECTDESTINATION = 0x00000001
 DWM_TNP_VISIBLE = 0x00000008
@@ -52,6 +53,7 @@ DwmQueryThumbnailSourceSize = dwmapi.DwmQueryThumbnailSourceSize
 DwmQueryThumbnailSourceSize.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.SIZE)]
 DwmQueryThumbnailSourceSize.restype = wintypes.HRESULT
 
+
 def enum_windows():
     """Return list of (title, handle) tuples for visible windows."""
     results = []
@@ -74,6 +76,7 @@ class WindowListWidget(QtWidgets.QListWidget):
         super().__init__(parent)
         self.setDragEnabled(True)
 
+
     def refresh(self):
         self.clear()
         for title, hwnd in enum_windows():
@@ -95,6 +98,7 @@ class WindowListWidget(QtWidgets.QListWidget):
 
 class ThumbnailWidget(QtWidgets.QWidget):
     """Widget that shows a live DWM thumbnail of a window."""
+
 
     def __init__(self, hwnd, parent=None):
         super().__init__(parent)
@@ -136,6 +140,7 @@ class ThumbnailWidget(QtWidgets.QWidget):
         super().closeEvent(event)
 
 
+
 class DockArea(QtWidgets.QMdiArea):
     """Area that accepts window handles to dock."""
 
@@ -172,6 +177,7 @@ class DockArea(QtWidgets.QMdiArea):
         win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
 
 
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -188,6 +194,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.dock_area = DockArea()
         self.setCentralWidget(self.dock_area)
+
 
 
 def main():
