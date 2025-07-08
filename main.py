@@ -10,6 +10,11 @@ import win32con
 import ctypes
 from ctypes import wintypes
 
+# Older Python versions may lack the HRESULT type
+if not hasattr(wintypes, 'HRESULT'):
+    wintypes.HRESULT = ctypes.c_long
+
+
 # DWM API constants and setup
 DWM_TNP_RECTDESTINATION = 0x00000001
 DWM_TNP_VISIBLE = 0x00000008
